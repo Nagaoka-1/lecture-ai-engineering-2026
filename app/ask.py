@@ -23,10 +23,27 @@ DEFAULT_QUESTION = "AIE2026の講座の宿題にある「3レベル」とは何�
 
 def ask(question: str) -> str:
     client = genai.Client(api_key=get_api_key())
-    response = client.models.generate_content(model=MODEL, contents=question)
 
-    # TODO(第1回 演習): response.usage_metadata から
-    #   入力トークン数と出力トークン数を表示してみよう（Copilotに頼んでよい）
+    with open("app/context.txt") as f:
+        context=f.read()
+        ai_input=context+"\nUSER: "+question
+
+    response = client.models.generate_content(model=MODEL, contents=ai_input)
+
+    input_tokens = client.models.count_tokens(
+    model=MODEL,
+    contents=question
+    )
+    output_tokens = client.models.count_tokens(
+    model=MODEL,
+    contents=response
+    )
+    print(f"入力: {input_tokens.total_tokens}トークン")
+    print(f"出力: {output_tokens.total_tokens}トークン")
+
+    with open("app/context.txt", mode='a') as f:
+        f.write("USER: "+question+"\n")
+        f.write("AI: "+response.text+"\n")
 
     return response.text
 
