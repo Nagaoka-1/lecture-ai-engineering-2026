@@ -5,10 +5,14 @@
 """
 
 import json
+import random
+from datetime import datetime, timezone
 from functools import cache
 from pathlib import Path
+from uuid import uuid4
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+LEARNING_LOG_DIR = Path(__file__).resolve().parent.parent / "learning_log"
 MAX_RESULTS = 3
 
 
@@ -77,3 +81,43 @@ def get_lecture_summary(lecture: int) -> str:
         available = sorted(p.stem for p in (DATA_DIR / "lectures").glob("*.md"))
         return f"第{lecture}回の要点はまだありません。用意されている回: {', '.join(available)}"
     return path.read_text(encoding="utf-8")
+
+
+def make_quiz(lecture: int) -> str:
+    """指定した回の用語から 1つを選び、
+    確認問題と答えを返す。
+    「第2回の確認問題を出して」のように、
+    復習用の問題を求められたときに使う。
+    """
+    terms = [term for term in load_glossary() if term["lecture"] == lecture]
+    if not terms:
+        return f"第{lecture}回の用語が見つかりませんでした。"
+
+    term = random.choice(terms)
+    return json.dumps(
+        {
+            "question": f"「{term['term']}」の意味は？",
+            "answer": term["definition"],
+        },
+        ensure_ascii=False,
+    )
+
+
+def save_learning_log(content: str) -> str:
+    """利用者が学習内容を記録・保存するよう頼んだとき、learning_log/ に Markdown で保存する。
+
+    「今日学んだことを記録して」「この会話の要点を学習ログに保存して」などと言われたら、
+    会話から記録内容をまとめて、このツールを呼び出す。保存するかを会話で尋ねるだけで終わらず、
+    利用者が指定した学び・振り返りを content に渡す。内容を勝手に補わない。
+
+    呼び出すと CLI が保存前に承認を求める。承認されるまではファイルは作成されない。
+    """
+    if not content.strip():
+        return "保存する学習記録が空です。"
+
+    LEARNING_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    path = LEARNING_LOG_DIR / f"{timestamp}-{uuid4().hex}.md"
+    with path.open("x", encoding="utf-8") as f:
+        f.write(content.rstrip() + "\n")
+    return f"学習記録を保存しました: {path}"
