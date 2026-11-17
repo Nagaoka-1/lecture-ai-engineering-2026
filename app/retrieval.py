@@ -84,6 +84,22 @@ def read_page(page_id: str) -> dict:
     raise ValueError("対象のページが見つかりません。")
 
 
+def _include_adjacent_pages(results: list[dict], pages: list[dict]) -> list[dict]:
+    """検索結果の後ろに、同じ資料内の前後ページを重複なく追加する。"""
+    included = {result["page_id"] for result in results}
+    expanded = list(results)
+    for result in results:
+        for position, page in enumerate(pages):
+            if page["page_id"] != result["page_id"]:
+                continue
+            for neighbor in pages[position - 1:position] + pages[position + 1:position + 2]:
+                if neighbor["document_id"] == result["document_id"] and neighbor["page_id"] not in included:
+                    included.add(neighbor["page_id"])
+                    expanded.append(neighbor)
+            break
+    return expanded
+
+
 def normalized_vector(values: list[float]) -> list[float]:
     """ベクトルの長さを1に揃える。"""
     norm = math.hypot(*values)
@@ -125,7 +141,7 @@ def open_index(path: Path):
 
 
 def search(query: str) -> list[dict]:
-    """質問を埋め込み、近いページを最大RAG_TOP_K件返す。"""
+    """質問を埋め込み、近いページと同じ資料の前後ページを返す。"""
     if not isinstance(query, str) or not query.strip():
         raise ValueError("検索語が空です。")
     with open_index(RAG_DB) as db:
@@ -135,7 +151,8 @@ def search(query: str) -> list[dict]:
                    vec_distance_cosine(embedding, ?) AS distance
             FROM chunks ORDER BY distance, page_id LIMIT ?
         """, (sqlite_vec.serialize_float32(vector), RAG_TOP_K))
-        return [dict(row) for row in rows]
+        results = [dict(row) for row in rows]
+    return _include_adjacent_pages(results, load_pages(RAG_SOURCE))
 
 
 def search_graph(query: str) -> dict:
